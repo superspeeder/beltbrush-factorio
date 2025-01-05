@@ -204,11 +204,11 @@ local function set_player_cursor_bp(player, bptable)
 end
 
 local function is_player_holding_belt(player)
-    return player.cursor_stack.valid_for_read and player.cursor_stack.prototype.place_result.type == 'transport-belt'
+    return player.cursor_stack.valid_for_read and player.cursor_stack.prototype.place_result ~= nil and player.cursor_stack.prototype.place_result.type == 'transport-belt'
 end
 
 local function is_player_holding_belt_ghost(player)
-    return player.cursor_ghost ~= nil and player.cursor_ghost.name.place_result.type == 'transport-belt'
+    return player.cursor_ghost ~= nil and player.cursor_ghost.name.place_result ~= nil and player.cursor_ghost.name.place_result.type == 'transport-belt'
 end
 
 local function player_cycle_bp(player)

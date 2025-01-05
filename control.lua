@@ -40,11 +40,18 @@ bb_settings = {
 local function decode_bb_settings(bpstack)
     local label = bpstack.label
     local _, _, kind, width = string.find(label, bp_format);
-    return {
+    local bbs = {
         entity_name = bpstack.get_blueprint_entities()[1].name,
         width = tonumber(width),
-        kind = bbkind_name_rev[kind]
+        kind = bbkind_name_rev[kind],
     }
+    if bpstack.get_blueprint_entities()[1].quality ~= nil then
+        bbs.quality = bpstack.get_blueprint_entities()[1].quality
+    else
+        bbs.quality = nil
+    end
+
+    return bbs
 end
 
 local function write_label(bb_settings)
@@ -60,7 +67,7 @@ local function is_blueprint_bb(label)
 end
 
 local function is_player_holding_bbbp(player)
-    if player.cursor_stack.is_blueprint then
+    if player.cursor_stack.valid_for_read and player.cursor_stack.is_blueprint then
         if is_blueprint_bb(player.cursor_stack.label) then
             return true
         end
@@ -74,45 +81,55 @@ local function isturn(x, y)
 end
 
 local function genblueprintstring(blueprint_table)
-    return '0'..helpers.encode_string(helpers.table_to_json(blueprint_table))
+    local json = helpers.table_to_json(blueprint_table)
+    log(json)
+    return '0'..helpers.encode_string(json)
 end
 
-local function generate_entity_bp(entity_name, number, position, direction)
+local function generate_entity_bp(entity_name, number, position, direction, quality)
+    local ebp = {
+        entity_number = number,
+        name = entity_name,
+        position = position,
+    }
+
     if direction ~= nil then
-        return {
-            entity_number = number,
-            name = entity_name,
-            position = position,
-            direction = direction
-        }
-    else
-        return {
-            entity_number = number,
-            name = entity_name,
-            position = position,
-        }
+        ebp.direction = direction
     end
+
+    log(quality)
+    if quality ~= nil then
+        ebp.quality = quality
+    end
+
+    return ebp
 end
 
-local function generate_entities_line(entity_name, width)
+local function generate_entities_line(entity_name, width, quality)
     local tbl = {}
     for x = 1, width do
         table.insert(tbl, generate_entity_bp(entity_name, x, {
             x = x,
             y = 0
-        }));
+        }, nil, quality));
     end
     return tbl
 end
 
-local function generate_bp_entities(entities, icon_signal, label)
+local function generate_bp_entities(entities, icon_signal, label, quality)
+    local signal_struct = {
+        name = icon_signal
+    }
+
+    if quality ~= nil then
+        signal_struct.quality = quality
+    end
+
     return {
         blueprint = {
             icons = {
                 {
-                    signal = {
-                        name = icon_signal
-                    },
+                    signal = signal_struct,
                     index = 1
                 }
             },
@@ -124,14 +141,14 @@ local function generate_bp_entities(entities, icon_signal, label)
     }
 end
 
-local function generate_line_brush_bp(entity_name, width)
-    return generate_bp_entities(generate_entities_line(entity_name, width), entity_name, write_label({
+local function generate_line_brush_bp(entity_name, width, quality)
+    return generate_bp_entities(generate_entities_line(entity_name, width, quality), entity_name, write_label({
         kind = bb_kind.line,
         width = width
-    }))
+    }), quality)
 end
 
-local function generate_corner_rh_brush_bp(entity_name, width)
+local function generate_corner_rh_brush_bp(entity_name, width, quality)
     local entities = {}
     for x = 1, width do
         for y = 1, width do
@@ -139,12 +156,12 @@ local function generate_corner_rh_brush_bp(entity_name, width)
                 table.insert(entities, generate_entity_bp(entity_name, (x - 1) * width + y, {
                     x = x,
                     y = y,
-                }, defines.direction.east))
+                }, defines.direction.east, quality))
             else
                 table.insert(entities, generate_entity_bp(entity_name, (x - 1) * width + y, {
                     x = x,
                     y = y,
-                }))
+                }, nil, quality))
             end
         end
     end
@@ -152,10 +169,10 @@ local function generate_corner_rh_brush_bp(entity_name, width)
     return generate_bp_entities(entities, entity_name, write_label({
         kind = bb_kind.corner_rh,
         width = width,
-    }))
+    }), quality)
 end
 
-local function generate_corner_lh_brush_bp(entity_name, width)
+local function generate_corner_lh_brush_bp(entity_name, width, quality)
     local entities = {}
     for x = 1, width do
         for y = 1, width do
@@ -163,12 +180,12 @@ local function generate_corner_lh_brush_bp(entity_name, width)
                 table.insert(entities, generate_entity_bp(entity_name, (x - 1) * width + y, {
                     x = x,
                     y = y,
-                }, defines.direction.west))
+                }, defines.direction.west, quality))
             else
                 table.insert(entities, generate_entity_bp(entity_name, (x - 1) * width + y, {
                     x = x,
                     y = y,
-                }))
+                }, nil, quality))
             end
         end
     end
@@ -176,7 +193,7 @@ local function generate_corner_lh_brush_bp(entity_name, width)
     return generate_bp_entities(entities, entity_name, write_label({
         kind = bb_kind.corner_lh,
         width = width,
-    }))
+    }), quality)
 end
 
 local function set_player_cursor_bp(player, bptable)
@@ -187,20 +204,24 @@ local function set_player_cursor_bp(player, bptable)
 end
 
 local function is_player_holding_belt(player)
-    return player.cursor_stack.prototype.place_result.type == 'transport-belt'
+    return player.cursor_stack.valid_for_read and player.cursor_stack.prototype.place_result.type == 'transport-belt'
+end
+
+local function is_player_holding_belt_ghost(player)
+    return player.cursor_ghost ~= nil and player.cursor_ghost.name.place_result.type == 'transport-belt'
 end
 
 local function player_cycle_bp(player)
     if is_player_holding_bbbp(player) then
         local bb_settings = decode_bb_settings(player.cursor_stack)
         if bb_settings.kind == bb_kind.line then
-            local bptable = generate_corner_rh_brush_bp(bb_settings.entity_name, bb_settings.width)
+            local bptable = generate_corner_rh_brush_bp(bb_settings.entity_name, bb_settings.width, bb_settings.quality)
             set_player_cursor_bp(player, bptable)
         elseif bb_settings.kind == bb_kind.corner_rh then
-            local bptable = generate_corner_lh_brush_bp(bb_settings.entity_name, bb_settings.width)
+            local bptable = generate_corner_lh_brush_bp(bb_settings.entity_name, bb_settings.width, bb_settings.quality)
             set_player_cursor_bp(player, bptable)
         else
-            local bptable = generate_line_brush_bp(bb_settings.entity_name, bb_settings.width)
+            local bptable = generate_line_brush_bp(bb_settings.entity_name, bb_settings.width, bb_settings.quality)
             set_player_cursor_bp(player, bptable)
         end
     end
@@ -211,11 +232,11 @@ local function player_cycle_down_beltbrush(player)
         local bb_settings = decode_bb_settings(player.cursor_stack)
         if bb_settings.width > 2 then
             if bb_settings.kind == bb_kind.line then
-                set_player_cursor_bp(player, generate_line_brush_bp(bb_settings.entity_name, bb_settings.width - 1))
+                set_player_cursor_bp(player, generate_line_brush_bp(bb_settings.entity_name, bb_settings.width - 1, bb_settings.quality))
             elseif bb_settings.kind == bb_kind.corner_lh then
-                set_player_cursor_bp(player, generate_corner_lh_brush_bp(bb_settings.entity_name, bb_settings.width - 1))
+                set_player_cursor_bp(player, generate_corner_lh_brush_bp(bb_settings.entity_name, bb_settings.width - 1, bb_settings.quality))
             else
-                set_player_cursor_bp(player, generate_corner_rh_brush_bp(bb_settings.entity_name, bb_settings.width - 1))
+                set_player_cursor_bp(player, generate_corner_rh_brush_bp(bb_settings.entity_name, bb_settings.width - 1, bb_settings.quality))
             end
         elseif bb_settings.width == 2 then -- become belt
             player.clear_cursor()
@@ -231,14 +252,16 @@ local function player_cycle_up_beltbrush(player)
     if is_player_holding_bbbp(player) then
         local bb_settings = decode_bb_settings(player.cursor_stack)
         if bb_settings.kind == bb_kind.line then
-            set_player_cursor_bp(player, generate_line_brush_bp(bb_settings.entity_name, bb_settings.width + 1))
+            set_player_cursor_bp(player, generate_line_brush_bp(bb_settings.entity_name, bb_settings.width + 1, bb_settings.quality))
         elseif bb_settings.kind == bb_kind.corner_lh then
-            set_player_cursor_bp(player, generate_corner_lh_brush_bp(bb_settings.entity_name, bb_settings.width + 1))
+            set_player_cursor_bp(player, generate_corner_lh_brush_bp(bb_settings.entity_name, bb_settings.width + 1, bb_settings.quality))
         else
-            set_player_cursor_bp(player, generate_corner_rh_brush_bp(bb_settings.entity_name, bb_settings.width + 1))
+            set_player_cursor_bp(player, generate_corner_rh_brush_bp(bb_settings.entity_name, bb_settings.width + 1, bb_settings.quality))
         end
     elseif is_player_holding_belt(player) then
-        set_player_cursor_bp(player, generate_line_brush_bp(player.cursor_stack.prototype.place_result.name, 2))
+        set_player_cursor_bp(player, generate_line_brush_bp(player.cursor_stack.prototype.place_result.name, 2, player.cursor_stack.quality.name))
+    elseif is_player_holding_belt_ghost(player) then
+        set_player_cursor_bp(player, generate_line_brush_bp(player.cursor_ghost.name.name, 2, player.cursor_ghost.quality.name))
     end
 end
 

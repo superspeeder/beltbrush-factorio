@@ -26,14 +26,14 @@ jobs:
         id: readinfo
         run: |
           {
-            echo 'info_json<<EOF'
+            echo "INFO_JSON<<EOF"
             cat ./beltbrush2/info.json
             echo EOF
           } >> "$GITHUB_OUTPUT"
       - name: Read Version
         id: readver
         run: |
-          echo "version=${{fromJson(steps.readinfo.outputs.info_json).version}}" >> $GITHUB_OUTPUT
+          echo "version=${{fromJson(steps.readinfo.outputs.INFO_JSON).version}}" >> $GITHUB_OUTPUT
       - name: Zip
         run: zip -r -q "beltbrush2_${{ steps.readver.outputs.version }}.zip" "beltbrush2"
       - name: Release

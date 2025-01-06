@@ -28,6 +28,7 @@ jobs:
           {
             echo "INFO_JSON<<EOF"
             cat ./beltbrush2/info.json
+            echo $'\n'
             echo EOF
           } >> "$GITHUB_OUTPUT"
       - name: Read Version

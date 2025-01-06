@@ -25,9 +25,11 @@ jobs:
       - name: Read Info
         id: readinfo
         run: |
-          echo 'info_json<<EOF' >> $GITHUB_OUTPUT
-          cat ./beltbrush2/info.json >> $GITHUB_OUTPUT
-          echo EOF >> $GITHUB_OUTPUT
+          {
+            echo 'info_json<<EOF'
+            cat ./beltbrush2/info.json
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
       - name: Read Version
         id: readver
         run: |

@@ -522,8 +522,8 @@ end)
 
 local function in_build_range(player, entity)
     local build_range2 = player.build_distance * player.build_distance
-    local bx = player.position.x - entity.position.x
-    local by = player.position.y - entity.position.y
+    local bx = player.physical_position.x - entity.position.x
+    local by = player.physical_position.y - entity.position.y
     local entity_distance2 = bx * bx + by * by
     return entity_distance2 <= build_range2
 end
@@ -531,14 +531,14 @@ end
 script.on_event(defines.events.on_built_entity, function(event)
     local player = game.players[event.player_index]
     if player == nil then return end
-    if event.entity ~= nil and event.entity.type == "entity-ghost" and is_player_holding_bbbp(player) and in_build_range(player, event.entity) then
+    if event.entity ~= nil and event.entity.surface == player.physical_surface and event.entity.type == "entity-ghost" and is_player_holding_bbbp(player) and in_build_range(player, event.entity) then
         if event.entity.ghost_prototype ~= nil and event.entity.ghost_prototype.items_to_place_this ~= nil then
             local place = event.entity.ghost_prototype.items_to_place_this[1]
             if event.entity.quality ~= nil then
                 place.quality = event.entity.quality.name
             end
             if place ~= nil then
-                if player.get_main_inventory().get_item_count({name=place.name, quality=place.quality}) >= place.count then
+                if player.get_main_inventory() ~= nil and player.get_main_inventory().get_item_count({name=place.name, quality=place.quality}) >= place.count then
                     player.get_main_inventory().remove(place)
                     event.entity.silent_revive()
                 end
